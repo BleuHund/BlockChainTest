@@ -7,6 +7,7 @@ import time
 
 from hashlib import sha3_512, sha3_256
 
+from Crypto.Hash import SHA3_256, SHA3_512, RIPEMD160
 from Crypto.PublicKey import RSA
 from Crypto.Signature import pkcs1_15
 
@@ -70,10 +71,14 @@ class Blockchain:
 
     def add_new_transaction(self, public_key, signed_transaction):
         try:
-            self.validate_signature(public_key, signed_transaction)
+            Blockchain.validate_signature(public_key, signed_transaction)
         except AddressKeyMismatch:
             print("Wrong key")
-        self.unconfirmed_transactions.append(signed_transaction)
+        except ValueError:
+            print("Invalid Signature")
+            print(signed_transaction.__dict__)
+        else:
+            self.unconfirmed_transactions.append(signed_transaction)
 
     def mine(self):
         if not self.unconfirmed_transactions:
@@ -89,12 +94,12 @@ class Blockchain:
         return new_block.index
 
     @staticmethod
-    def validate_signature(self, public_key, signed_transaction):
+    def validate_signature(public_key, signed_transaction):
         address = public_key
         h = hashlib.new('ripemd160')
-        h.update(sha3_256(public_key).hexdigest().encode())
-        address = base58.b58encode(h.hexdigest())
-        if address != signed_transaction.transaction.receiver:
+        h.update(sha3_256(public_key.export_key()).hexdigest().encode())
+        address = base58.b58encode(h.hexdigest()).decode("utf-8")
+        if address != signed_transaction.transaction.sender:
             raise AddressKeyMismatch
         pkcs1_15.new(public_key).verify(signed_transaction.transaction.compute_hash(), signed_transaction.signature)
 
@@ -105,13 +110,13 @@ class AddressKeyMismatch(Exception):
 
 class Transaction:
     def __init__(self, sender, receiver, value):
-        self.sender = sender
-        self.receiver = receiver
+        self.sender = sender.decode("utf-8")
+        self.receiver = receiver.decode("utf-8")
         self.value = value
 
     def compute_hash(self):
         block_string = json.dumps(self.__dict__, sort_keys=True)
-        return sha3_512(block_string.encode()).hexdigest()
+        return SHA3_512.new(block_string.encode())
 
     def sign(self, private_key):
         return SignedTransaction(self, binascii.hexlify(
@@ -167,10 +172,10 @@ class TransactionMerkleTree:
 class Wallet:
     def __init__(self):
         self.private_key = RSA.generate(2048)
-        self.public_key = self.private_key.public_key().export_key()
+        self.public_key = self.private_key.public_key()
         self.address = self.public_key
         h = hashlib.new('ripemd160')
-        h.update(sha3_256(self.public_key).hexdigest().encode())
+        h.update(sha3_256(self.public_key.export_key()).hexdigest().encode())
         self.address = base58.b58encode(h.hexdigest())
 
 
@@ -180,6 +185,8 @@ if __name__ == '__main__':
     myBlockchain = Blockchain(difficulty=4)
 
     myTransaction = Transaction(wallet1.address, wallet2.address, 10.05)
-    mySignedTransaction = myTransaction.sign(wallet1.public_key)
-    myBlockchain.add_new_transaction(wallet1.public_key, mySignedTransaction)
+    mySignedTransaction01 = myTransaction.sign(wallet1.private_key)
+    mySignedTransaction02 = myTransaction.sign(wallet1.private_key)
+    myBlockchain.add_new_transaction(wallet1.public_key, mySignedTransaction01)
+    myBlockchain.add_new_transaction(wallet1.public_key, mySignedTransaction02)
     myBlockchain.mine()
