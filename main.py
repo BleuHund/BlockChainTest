@@ -140,7 +140,7 @@ class TransactionMerkleTree:
         last_layer = []
         # Hash all the transactions
         for signed_transaction in signed_transactions:
-            last_layer.append(TransactionMerkleTree.Node(node_hash=signed_transaction.transaction.compute_hash()))
+            last_layer.append(TransactionMerkleTree.Node(node_hash=signed_transaction.transaction.compute_hash(), signed_transaction=signed_transaction))
         # Buffer the tree so it's complete and full
         if len(signed_transactions) % 2 == 0:
             for i in range(number_leaves - len(last_layer)):
@@ -154,15 +154,16 @@ class TransactionMerkleTree:
             for j in range(len(last_layer) // 2):
                 node_hash = SHA3_512.new(
                     f"{last_layer[j * 2].node_hash}{last_layer[j * 2 + 1].node_hash}".encode()).hexdigest()
-                this_layer.append(TransactionMerkleTree.Node(node_hash, last_layer[j * 2], last_layer[j * 2 + 1]))
+                this_layer.append(TransactionMerkleTree.Node(node_hash=node_hash, right_child=last_layer[j * 2], left_child=last_layer[j * 2 + 1]))
             last_layer = this_layer
             this_layer = []
 
         self.root = last_layer[0]
 
     class Node:
-        def __init__(self, node_hash=None, right_child=None, left_child=None):
+        def __init__(self, node_hash=None, signed_transaction=None, right_child=None, left_child=None):
             self.node_hash = node_hash
+            self.signed_transaction = signed_transaction
             self.right_child = right_child
             self.left_child = left_child
 
