@@ -1,12 +1,14 @@
 import base58
-import binascii
 import json
-import math
 import time
 
+
 from Crypto.Hash import SHA3_256, SHA3_512, RIPEMD160
-from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
+
+
+from transaction import Transaction, TransactionMerkleTree
+from wallet import Wallet
 
 
 class Block:
@@ -109,84 +111,30 @@ class AddressKeyMismatch(Exception):
     pass
 
 
-class Transaction:
-    def __init__(self, sender, receiver, value):
-        self.sender = sender.decode("utf-8")
-        self.receiver = receiver.decode("utf-8")
-        self.value = value
-
-    def compute_hash(self):
-        block_string = json.dumps(self.__dict__, sort_keys=True)
-        return SHA3_512.new(block_string.encode())
-
-    def sign(self, private_key):
-        return SignedTransaction(self, binascii.hexlify(
-            PKCS1_v1_5.new(private_key).sign(self.compute_hash())
-        ).decode("utf-8"))
-
-
-class SignedTransaction:
-    def __init__(self, transaction, signature):
-        self.transaction = transaction
-        self.signature = signature
-
-
-class TransactionMerkleTree:
-    def __init__(self, signed_transactions):
-
-        depth = math.ceil(math.log2(len(signed_transactions)))
-        number_leaves = 2 ** depth
-
-        last_layer = []
-        # Hash all the transactions
-        for signed_transaction in signed_transactions:
-            last_layer.append(TransactionMerkleTree.Node(node_hash=signed_transaction.transaction.compute_hash(), signed_transaction=signed_transaction))
-        # Buffer the tree so it's complete and full
-        if len(signed_transactions) % 2 == 0:
-            for i in range(number_leaves - len(last_layer)):
-                last_layer.append(last_layer[-2])
-        else:
-            for i in range(number_leaves - len(last_layer)):
-                last_layer.append(last_layer[-1])
-
-        this_layer = []
-        for i in range(depth):
-            for j in range(len(last_layer) // 2):
-                node_hash = SHA3_512.new(
-                    f"{last_layer[j * 2].node_hash}{last_layer[j * 2 + 1].node_hash}".encode()).hexdigest()
-                this_layer.append(TransactionMerkleTree.Node(node_hash=node_hash, right_child=last_layer[j * 2], left_child=last_layer[j * 2 + 1]))
-            last_layer = this_layer
-            this_layer = []
-
-        self.root = last_layer[0]
-
-    class Node:
-        def __init__(self, node_hash=None, signed_transaction=None, right_child=None, left_child=None):
-            self.node_hash = node_hash
-            self.signed_transaction = signed_transaction
-            self.right_child = right_child
-            self.left_child = left_child
-
-        def __str__(self):
-            return str(self.node_hash)
-
-
-class Wallet:
-    def __init__(self):
-        self.private_key = RSA.generate(2048)
-        self.public_key = self.private_key.public_key()
-        self.address = self.public_key
-        h = RIPEMD160.new(SHA3_256.new(self.public_key.export_key()).hexdigest().encode())
-        self.address = base58.b58encode(h.hexdigest())
-
-
 if __name__ == '__main__':
     wallet1 = Wallet()
     wallet2 = Wallet()
+
+    wallet1.generate_new_wallet()
+    wallet1.save_wallet()
+    wallet2.generate_new_wallet()
     myBlockchain = Blockchain(difficulty=4)
 
-    myTransaction = Transaction(wallet1.address, wallet2.address, 10.05)
-    mySignedTransaction01 = myTransaction.sign(wallet1.private_key)
+    myTransaction01 = Transaction(wallet1.address, wallet2.address, 10.05)
+    mySignedTransaction01 = myTransaction01.sign(wallet1.private_key)
     myBlockchain.add_new_transaction(wallet1.public_key, mySignedTransaction01)
+
+    myTransaction02 = Transaction(wallet1.address, wallet2.address, 22.40)
+    mySignedTransaction02 = myTransaction02.sign(wallet1.private_key)
+    myBlockchain.add_new_transaction(wallet1.public_key, mySignedTransaction02)
+
+    myTransaction03 = Transaction(wallet1.address, wallet2.address, 11.55)
+    mySignedTransaction03 = myTransaction03.sign(wallet1.private_key)
+    myBlockchain.add_new_transaction(wallet1.public_key, mySignedTransaction03)
+
+    myTransaction04 = Transaction(wallet1.address, wallet2.address, 100.05)
+    mySignedTransaction04 = myTransaction04.sign(wallet1.private_key)
+    myBlockchain.add_new_transaction(wallet1.public_key, mySignedTransaction04)
+
     myBlockchain.mine()
     print(myBlockchain)
